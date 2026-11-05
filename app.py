@@ -1,6 +1,7 @@
 import streamlit as st
 import ee
-import geemap.foliumap as geemap
+import folium
+from streamlit_folium import folium_static
 
 # 1. Initialize Page Settings
 st.set_page_config(page_title="GeoAI Eco-Monitor", layout="wide", page_icon="🌍")
@@ -12,7 +13,7 @@ st.sidebar.header("🎛️ Engine Controls")
 zoom_level = st.sidebar.slider("Map Zoom Level", min_value=4, max_value=12, value=6)
 selected_layers = st.sidebar.multiselect(
     "Select Display Layers",
-    ["Sentinel-2 Clear Mosaic", "Vegetation Health Index (NDVI)", "GeoAI Automated Land Cover"],
+    ["Sentinel-2 Clear Mosaic", "Vegetation Health Index (NDVI)"],
     default=["Sentinel-2 Clear Mosaic", "Vegetation Health Index (NDVI)"]
 )
 
@@ -34,32 +35,44 @@ if st.session_state.get('ee_initialized'):
                            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10)))
     clear_composite = sentinel_collection.median()
     
-    # Render Interactive Visual Viewport using the folium-backed layout
-    Map = geemap.Map(center=[0.0, 37.0], zoom=zoom_level)
-    Map.add_basemap('HYBRID')
+    # Create standard Folium Map
+    m = folium.Map(location=[0.0, 37.0], zoom_start=zoom_level, tiles="OpenStreetMap")
+    
+    # Add Google Satellite Basemap manually to bypass geemap dependencies
+    folium.TileLayer(
+        tiles='https://google.com{x}&y={y}&z={z}',
+        attr='Google',
+        name='Google Satellite',
+        overlay=False,
+        control=True
+    ).add_to(m)
     
     # Layer 1: Raw Sentinel Mosaic
     if "Sentinel-2 Clear Mosaic" in selected_layers:
-        Map.addLayer(clear_composite, {'bands': ['B4', 'B3', 'B2'], 'min': 0, 'max': 3000}, 'Sentinel-2 Clear Mosaic')
+        viz_params = {'bands': ['B4', 'B3', 'B2'], 'min': 0, 'max': 3000}
+        map_id_dict = ee.Image(clear_composite).getMapId(viz_params)
+        folium.TileLayer(
+            tiles=map_id_dict['tile_fetcher'].url_format,
+            attr='Google Earth Engine',
+            name='Sentinel-2 Clear Mosaic',
+            overlay=True
+        ).add_to(m)
         
     # Layer 2: Analytical NDVI Index
     if "Vegetation Health Index (NDVI)" in selected_layers:
         ndvi = clear_composite.normalizedDifference(['B8', 'B4'])
-        ndvi_palette = ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#99B718', '#207401', '#011301']
-        Map.addLayer(ndvi, {'min': 0.0, 'max': 0.8, 'palette': ndvi_palette}, 'Vegetation Health Index (NDVI)')
-        
-    # Layer 3: Machine Learning Model Deployment
-    if "GeoAI Automated Land Cover" in selected_layers:
-        forest_mask = ndvi.gt(0.6).remap([0, 1], [1, 2], 0).rename('landcover')
-        prediction_bands = ['B2', 'B3', 'B4', 'B8']
-        sample_dataset = clear_composite.select(prediction_bands).addBands(forest_mask).stratifiedSample(
-            numPoints=50, classBand='landcover', region=point.buffer(30000), scale=30, geometries=True
-        )
-        geo_ai_classifier = ee.Classifier.smileRandomForest(numberOfTrees=10).train(
-            features=sample_dataset, classProperty='landcover', inputProperties=prediction_bands
-        )
-        classified_map = clear_composite.select(prediction_bands).classify(geo_ai_classifier)
-        Map.addLayer(classified_map, {'min': 1, 'max': 2, 'palette': ['#228B22', '#FF4500']}, 'GeoAI Automated Land Cover')
+        # Simplified beautiful hex palette for standard folium mapping
+        map_id_dict_ndvi = ee.Image(ndvi).getMapId({
+            'min': 0.0, 
+            'max': 0.8, 
+            'palette': ['FFFFFF', 'CE7E45', 'DF923D', '99B718', '207401', '011301']
+        })
+        folium.TileLayer(
+            tiles=map_id_dict_ndvi['tile_fetcher'].url_format,
+            attr='Google Earth Engine',
+            name='Vegetation Health Index (NDVI)',
+            overlay=True
+        ).add_to(m)
 
-    # Draw the dynamic map layout directly into the Streamlit Web Frame
-    Map.to_streamlit(height=650)
+    # Render map cleanly on the dashboard web framework
+    folium_static(m, width=1100, height=650)
