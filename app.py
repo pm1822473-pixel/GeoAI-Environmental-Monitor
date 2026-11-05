@@ -1,7 +1,6 @@
 import streamlit as st
 import ee
-import geemap
-
+import geemap.foliumap as geemap
 
 # 1. Initialize Page Settings
 st.set_page_config(page_title="GeoAI Eco-Monitor", layout="wide", page_icon="🌍")
@@ -35,7 +34,7 @@ if st.session_state.get('ee_initialized'):
                            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10)))
     clear_composite = sentinel_collection.median()
     
-    # Render Interactive Visual Viewport
+    # Render Interactive Visual Viewport using the folium-backed layout
     Map = geemap.Map(center=[0.0, 37.0], zoom=zoom_level)
     Map.add_basemap('HYBRID')
     
