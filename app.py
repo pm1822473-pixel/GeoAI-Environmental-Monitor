@@ -1,6 +1,7 @@
 import streamlit as st
 import ee
-import geemap.foliumap as geemap
+import geemap
+
 
 # 1. Initialize Page Settings
 st.set_page_config(page_title="GeoAI Eco-Monitor", layout="wide", page_icon="🌍")
